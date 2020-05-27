@@ -45,11 +45,11 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..;..\..;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..;..\..;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -64,7 +64,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared.lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -84,7 +85,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared.lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -98,6 +100,18 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\projectM\msvc\MilkdropPresetFactory.vcxproj">
+      <Project>{ef3369c9-e934-3f1e-996b-21518b57a809}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\projectM\msvc\NativePresetFactory.vcxproj">
+      <Project>{e2d4cee6-b8cb-32ac-8977-52a48c8da4e1}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\projectM\msvc\projectM.vcxproj">
+      <Project>{dabc69a6-66c3-392c-8a62-ec989b0850a4}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\projectM\msvc\Renderer.vcxproj">
+      <Project>{07427fa1-1771-3a2d-9183-167a8345deeb}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\..\libPPUI\libPPUI.vcxproj">
       <Project>{7729eb82-4069-4414-964b-ad399091a03f}</Project>
     </ProjectReference>

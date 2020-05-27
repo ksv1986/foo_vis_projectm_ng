@@ -8,5 +8,10 @@
 #define PCH_H
 
 #include <helpers/foobar2000+atl.h>
+#include <helpers/BumpableElem.h>
+#include <libPPUI/win32_op.h>
+
+#include <libprojectM/projectM.hpp>
+#include <glew.h>
 
 #endif //PCH_H
