@@ -7,7 +7,6 @@
 #ifndef PCH_H
 #define PCH_H
 
-// add headers that you want to pre-compile here
-#include "framework.h"
+#include <helpers/foobar2000+atl.h>
 
 #endif //PCH_H
