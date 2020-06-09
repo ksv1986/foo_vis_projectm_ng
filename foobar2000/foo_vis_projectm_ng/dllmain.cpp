@@ -3,16 +3,20 @@
 namespace {
 	// {F9A79FD9-0DFA-40B8-A841-51FDE07E6EF7}
 	static const GUID s_guid = { 0xf9a79fd9, 0xdfa, 0x40b8, { 0xa8, 0x41, 0x51, 0xfd, 0xe0, 0x7e, 0x6e, 0xf7 } };
+	// {C3350A4C-A9F1-4369-96B2-33E873788A53}
+	static const GUID s_path_guid = { 0xc3350a4c, 0xa9f1, 0x4369, { 0x96, 0xb2, 0x33, 0xe8, 0x73, 0x78, 0x8a, 0x53 } };
+	static const RatingList s_default_rating = { 3, 3 };
+	cfg_string s_path(s_path_guid, "");
 
 	class CProjectMWindow
 		: public ui_element_instance
 		, public playback_stream_capture_callback
 		, public CWindowImpl<CProjectMWindow> {
 	public:
-		DECLARE_WND_CLASS_EX(L"{F9A79FD9-0DFA-40B8-A841-51FDE07E6EF7}", CS_VREDRAW | CS_HREDRAW | CS_OWNDC, (-1));
+		DECLARE_WND_CLASS_EX(L"{F9A79FD9-0DFA-40B8-A841-51FDE07E6EF7}", CS_VREDRAW | CS_HREDRAW | CS_OWNDC | CS_DBLCLKS, (-1));
 
 	BEGIN_MSG_MAP_EX(CProjectMWindow)
-		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown);
+		MSG_WM_LBUTTONDBLCLK(OnLButtonDblClk);
 		MSG_WM_TIMER(OnTimer)
 		MSG_WM_SIZE(OnSize)
 		MSG_WM_DESTROY(OnDestroy)
@@ -38,13 +42,14 @@ namespace {
 		static const char* g_get_description() { return "projectM Visualization"; }
 
 	private:
-		LRESULT OnLButtonDown(UINT, WPARAM, LPARAM, BOOL&);
+		void OnLButtonDblClk(UINT nFlags, CPoint point);
 		void OnSize(UINT nType, CSize size);
 		void OnTimer(UINT_PTR nIDEvent);
 		void OnDestroy();
 
 	private:
 		void initialize_gl();
+		void load_presets();
 		void render();
 
 	private:
@@ -66,8 +71,18 @@ namespace {
 		initialize_gl();
 	}
 
-	LRESULT CProjectMWindow::OnLButtonDown(UINT, WPARAM, LPARAM, BOOL&) {
-		m_callback->request_replace(this); return 0;
+	void CProjectMWindow::OnLButtonDblClk(UINT nFlags, CPoint point) {
+		if (!m_p)
+			return;
+
+		modal_dialog_scope scope(*this);
+		pfc::string8 path;
+		if (uBrowseForFolder(*this, "Choose presets folder", path)) {
+			s_path = path;
+			load_presets();
+			console::printf("projectM new playlist size: %u, presets directory: '%s'\n",
+				m_p->getPlaylistSize(), s_path.c_str());
+		}
 	}
 
 	void CProjectMWindow::OnSize(UINT nType, CSize r) {
@@ -118,8 +133,10 @@ namespace {
 		THROW_IF_MSG(sscanf_s(vers, "%u.%u.", &v1, &v2) != 2 || v1 * 10 + v2 < 20, "unsupported OpenGL version");
 
 		m_p = std::make_unique<projectM>(projectM::Settings{}, 0);
-		console::printf("projectM created, playlist size: %u\n",
-			m_p->getPlaylistSize());
+		load_presets();
+		console::printf("projectM created, playlist size: %u, presets directory: '%s'\n",
+			m_p->getPlaylistSize(), s_path.c_str());
+
 		playback_stream_capture::get()->add_callback(this);
 
 		constexpr UINT frames_per_second = 30;
@@ -133,6 +150,44 @@ namespace {
 		m_p->renderFrame();
 		CClientDC dc(*this);
 		dc.SwapBuffers();
+	}
+
+	void CProjectMWindow::load_presets() {
+		if (s_path.is_empty())
+			return;
+
+		struct cb : public directory_callback {
+			projectM& p;
+
+			explicit cb(projectM& _p) : p{ _p } {
+				p.clearPlaylist();
+			}
+
+			static bool is_preset(const pfc::string& ext) {
+				return ext == ".milk" || ext == ".prjm";
+			}
+
+			bool on_entry(filesystem*, abort_callback& abort_cb, const char* p_url, bool is_dir, const t_filestats&) override {
+				if (abort_cb.is_aborting())
+					return false;
+				if (is_dir)
+					return true;
+
+				const pfc::string url = p_url;
+				const pfc::string ext = pfc::io::path::getFileExtension(url).toLower();
+				if (is_preset(ext)) {
+					pfc::string8 path;
+					filesystem::g_get_native_path(p_url, path);
+					const pfc::string name = pfc::io::path::getFileNameWithoutExtension(url);
+					p.addPresetURL(path.c_str(), name.c_str(), s_default_rating);
+				}
+				return true;
+			}
+		};
+
+		pfc::string8 path;
+		filesystem::g_get_canonical_path(s_path.c_str(), path);
+		filesystem::g_list_directory(path.c_str(), cb{ *m_p }, fb2k::noAbort);
 	}
 
 	CProjectMWindow::~CProjectMWindow() {
