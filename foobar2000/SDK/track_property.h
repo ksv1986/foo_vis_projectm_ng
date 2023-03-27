@@ -1,5 +1,10 @@
 #pragma once
 
+#include "tracks.h"
+
+class track_property_provider_v5_info_source;
+class track_property_provider_v3_info_source;
+
 //! Callback interface for track_property_provider::enumerate_properties().
 class NOVTABLE track_property_callback {
 public:
@@ -29,7 +34,7 @@ protected:
 //! \since 1.3
 class NOVTABLE track_property_provider_v3_info_source {
 public:
-	virtual metadb_info_container::ptr get_info(size_t index) = 0;
+	virtual trackInfoContainer::ptr get_info(size_t index) = 0;
 
 protected:
 	track_property_provider_v3_info_source() {}
@@ -44,7 +49,7 @@ public:
 	//! Enumerates properties of specified track list.
 	//! @param p_tracks List of tracks to enumerate properties on.
 	//! @param p_out Callback interface receiving enumerated properties.
-	virtual void enumerate_properties(metadb_handle_list_cref p_tracks, track_property_callback & p_out) = 0;
+	virtual void enumerate_properties(trackListRef p_tracks, track_property_callback & p_out) = 0;
 	//! Returns whether specified tech info filed is processed by our service and should not be displayed among unknown fields.
 	//! @param p_name Name of tech info field being queried.
 	//! @returns True if the field is among fields processed by this track_property_provider implementation and should not be displayed among unknown fields, false otherwise.
@@ -56,7 +61,9 @@ public:
 	//! @param info Callback object to fetch info from. Pass null to use a generic implementation querying the metadb.
 	//! @param callback Callback interface receiving enumerated properties.
 	//! @param abort The aborter for this operation.
-	void enumerate_properties_helper(metadb_handle_list_cref items, track_property_provider_v3_info_source * info, track_property_callback_v2 & callback, abort_callback & abort);
+	void enumerate_properties_helper(trackListRef items, track_property_provider_v3_info_source * info, track_property_callback_v2 & callback, abort_callback & abort);
+	void enumerate_properties_helper(trackListRef items, track_property_provider_v5_info_source* info, track_property_callback_v2& callback, abort_callback& abort);
+	void enumerate_properties_helper(trackListRef items, std::nullptr_t, track_property_callback_v2& callback, abort_callback& abort);
 
 	FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(track_property_provider);
 };
@@ -64,7 +71,7 @@ public:
 class NOVTABLE track_property_provider_v2 : public track_property_provider {
 	FB2K_MAKE_SERVICE_INTERFACE(track_property_provider_v2,track_property_provider)
 public:
-	virtual void enumerate_properties_v2(metadb_handle_list_cref p_tracks, track_property_callback_v2 & p_out) = 0;
+	virtual void enumerate_properties_v2(trackListRef p_tracks, track_property_callback_v2 & p_out) = 0;
 };
 
 
@@ -72,10 +79,10 @@ public:
 class NOVTABLE track_property_provider_v3 : public track_property_provider_v2 {
 	FB2K_MAKE_SERVICE_INTERFACE(track_property_provider_v3,track_property_provider_v2)
 public:
-	virtual void enumerate_properties_v3(metadb_handle_list_cref items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback) = 0;	
+	virtual void enumerate_properties_v3(trackListRef items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback) = 0;
 
-	void enumerate_properties(metadb_handle_list_cref p_tracks, track_property_callback & p_out) override;
-	void enumerate_properties_v2(metadb_handle_list_cref p_tracks, track_property_callback_v2 & p_out) override;
+	void enumerate_properties(trackListRef p_tracks, track_property_callback & p_out) override;
+	void enumerate_properties_v2(trackListRef p_tracks, track_property_callback_v2 & p_out) override;
 };
 
 template<typename T>
@@ -90,7 +97,35 @@ class track_property_provider_factory_t : public service_factory_single_t<T> {};
 class NOVTABLE track_property_provider_v4 : public track_property_provider_v3 {
 	FB2K_MAKE_SERVICE_INTERFACE(track_property_provider_v4, track_property_provider_v3 );
 public:
-	void enumerate_properties_v3(metadb_handle_list_cref items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback) override;
+	void enumerate_properties_v3(trackListRef items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback) override;
 
-	virtual void enumerate_properties_v4(metadb_handle_list_cref items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback, abort_callback & abort) = 0;
+	virtual void enumerate_properties_v4(trackListRef items, track_property_provider_v3_info_source & info, track_property_callback_v2 & callback, abort_callback & abort) = 0;
+};
+
+//! \since 2.0
+//! Allows metadb v2 info records to be handed over transparently.
+class NOVTABLE track_property_provider_v5_info_source {
+public:
+	virtual metadb_v2_rec_t get_info(size_t index) = 0;
+};
+
+//! \since 2.0
+//! Allows metadb v2 info records to be handed over transparently.
+class NOVTABLE track_property_provider_v5 : public track_property_provider_v4 {
+	FB2K_MAKE_SERVICE_INTERFACE(track_property_provider_v5, track_property_provider_v4);
+public:
+	void enumerate_properties_v4(trackListRef items, track_property_provider_v3_info_source& info, track_property_callback_v2& callback, abort_callback& abort) override;
+
+	virtual void enumerate_properties_v5(trackListRef items, track_property_provider_v5_info_source& info, track_property_callback_v2& callback, abort_callback& abort) = 0;
+};
+
+class track_property_provider_v5_info_source_impl : public track_property_provider_v5_info_source {
+public:
+	track_property_provider_v5_info_source_impl(trackListRef items, abort_callback &a);
+	metadb_v2_rec_t get_info(size_t index) override;
+private:
+	pfc::array_t< metadb_v2_rec_t > m_infos;
+#if FOOBAR2000_TARGET_VERSION < 81
+	metadb_handle_list m_tracks;
+#endif
 };

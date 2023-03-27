@@ -14,6 +14,11 @@ public:
 	bool AllowDrawThemeText() override { return true; }
 };
 
+class CListCell_Edit: public CListCell_Text {
+public:
+	bool ClickToEdit() { return true; }
+};
+
 class CListCell_TextColors : public CListCell_Text {
 public:
 	void DrawContent( DrawContentArg_t const & ) override;
@@ -75,5 +80,22 @@ public:
 	static CListCell_RadioCheckbox instance;
 };
 
-void RenderButton( HTHEME theme, CWindow wnd, CDCHandle dc, CRect rcButton, CRect rcUpdate, uint32_t cellState );
-void RenderCheckbox( HTHEME theme, CWindow wnd, CDCHandle dc, CRect rcCheckBox, unsigned stateFlags, bool bRadio );
+class CListCell_Combo : public CListCell_Interactive {
+public:
+	void DrawContent(DrawContentArg_t const &) override;
+	const char * Theme() override { return "COMBOBOX"; }
+	LONG AccRole() override;
+	uint32_t EditFlags() override;
+	bool ClickToEdit() { return true; }
+};
+
+void RenderButton( HTHEME theme, CDCHandle dc, CRect rcButton, CRect rcUpdate, uint32_t cellState );
+void RenderCheckbox( HTHEME theme, CDCHandle dc, CRect rcCheckBox, unsigned stateFlags, bool bRadio );
+
+
+class CListCell_Text_FixedColor : public CListCell_Text {
+	const COLORREF m_col;
+public:
+	CListCell_Text_FixedColor(COLORREF col) : m_col(col) {}
+	void DrawContent(DrawContentArg_t const & arg) override;
+};

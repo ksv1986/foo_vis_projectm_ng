@@ -1,6 +1,7 @@
-#include "foobar2000.h"
+#include "foobar2000-sdk-pch.h"
 
 #ifdef _MSC_VER
+#include <pfc/fpu.h>
 #define RG_FPU() fpu_control_roundnearest bah;
 #else
 #define RG_FPU()
@@ -17,7 +18,11 @@ bool replaygain_info::g_format_gain(float p_value,char p_buffer[text_buffer_size
 	else
 	{
 		pfc::float_to_string(p_buffer,text_buffer_size - 4,p_value,2,true);
-		strcat(p_buffer," dB");
+#ifdef _MSC_VER
+		strcat_s(p_buffer, text_buffer_size, " dB");
+#else
+		strcat(p_buffer, " dB");
+#endif
 		return true;
 	}
 }
@@ -46,10 +51,7 @@ bool replaygain_info::g_format_peak(float p_value,char p_buffer[text_buffer_size
 
 void replaygain_info::reset()
 {
-	m_album_gain = gain_invalid;
-	m_track_gain = gain_invalid;
-	m_album_peak = peak_invalid;
-	m_track_peak = peak_invalid;
+	*this = replaygain_info();
 }
 
 #define meta_album_gain "replaygain_album_gain"
@@ -115,22 +117,21 @@ float replaygain_info::anyGain(bool bPreferAlbum) const {
 	}
 }
 
-void replaygain_info::set_album_gain_text(const char * p_text,t_size p_text_len)
-{
+float replaygain_info::g_parse_gain_text(const char * p_text, t_size p_text_len) {
 	RG_FPU();
 	if (p_text != 0 && p_text_len > 0 && *p_text != 0)
-		m_album_gain = (float)pfc::string_to_float(p_text,p_text_len);
+		return (float)pfc::string_to_float(p_text, p_text_len);
 	else
-		remove_album_gain();
+		return gain_invalid;
+}
+
+void replaygain_info::set_album_gain_text(const char * p_text,t_size p_text_len) {
+	m_album_gain = g_parse_gain_text(p_text, p_text_len);
 }
 
 void replaygain_info::set_track_gain_text(const char * p_text,t_size p_text_len)
 {
-	RG_FPU();
-	if (p_text != 0 && p_text_len > 0 && *p_text != 0)
-		m_track_gain = (float)pfc::string_to_float(p_text,p_text_len);
-	else
-		remove_track_gain();
+	m_track_gain = g_parse_gain_text(p_text, p_text_len);
 }
 
 void replaygain_info::set_album_peak_text(const char * p_text,t_size p_text_len)

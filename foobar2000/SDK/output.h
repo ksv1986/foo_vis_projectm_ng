@@ -5,15 +5,11 @@
 PFC_DECLARE_EXCEPTION(exception_output_device_not_found, pfc::exception, "Audio device not found")
 PFC_DECLARE_EXCEPTION(exception_output_module_not_found, exception_output_device_not_found, "Output module not found")
 PFC_DECLARE_EXCEPTION(exception_output_invalidated, pfc::exception, "Audio device invalidated")
+PFC_DECLARE_EXCEPTION(exception_output_device_in_use, pfc::exception, "Audio device in use")
+PFC_DECLARE_EXCEPTION(exception_output_unsupported_stream_format, pfc::exception, "Unsupported audio stream format")
 
-
-// =======================================================
-// IDEA BIN
-// ========
-// Accurate timing info required! get_latency NOT safe to call from any thread while it should be
-// There should be a legitimate way ( as in other than matching get_latency() against the amount of sent data ) to know when the output has finished prebuffering and started actual playback
-// Outputs should be able to handle idling : idle(abort_callback&) => while(!update()) aborter.sleep();  or optimized for specific output
-// =======================================================
+//! Output interrupted due to another application taking exclusive access to the device - do not complain to user.
+PFC_DECLARE_EXCEPTION(exception_output_interrupted, pfc::exception, "Output interrupted");
 
 //! Structure describing PCM audio data format, with basic helper functions.
 struct t_pcmspec
@@ -51,41 +47,6 @@ struct t_pcmspec
 	}
 };
 
-struct t_samplespec {
-	t_uint32 m_sample_rate;
-	t_uint32 m_channels,m_channel_config;
-
-	t_size time_to_samples(double p_time) const {PFC_ASSERT(is_valid());return (t_size)audio_math::time_to_samples(p_time,m_sample_rate);}
-	double samples_to_time(t_size p_samples) const {PFC_ASSERT(is_valid()); return audio_math::samples_to_time(p_samples,m_sample_rate);}
-
-	inline t_samplespec() {reset();}
-	inline t_samplespec(audio_chunk const & in) {fromchunk(in);}
-
-	inline void reset() {m_sample_rate = 0; m_channels = 0; m_channel_config = 0;}
-
-	inline bool operator==(const t_samplespec & p_spec2) const {
-		return m_sample_rate == p_spec2.m_sample_rate && m_channels == p_spec2.m_channels && m_channel_config == p_spec2.m_channel_config;
-	}
-
-	inline bool operator!=(const t_samplespec & p_spec2) const {
-		return !(*this == p_spec2);
-	}
-
-	inline bool is_valid() const {
-		return m_sample_rate > 0 && m_channels > 0 && audio_chunk::g_count_channels(m_channel_config) == m_channels;
-	}
-
-	static t_samplespec g_fromchunk(const audio_chunk & p_chunk) {
-		t_samplespec temp; temp.fromchunk(p_chunk); return temp;
-	}
-
-	void fromchunk(const audio_chunk & p_chunk) {
-		m_sample_rate = p_chunk.get_sample_rate();
-		m_channels = p_chunk.get_channels();
-		m_channel_config = p_chunk.get_channel_config();
-	}
-};
-
 class NOVTABLE output_device_enum_callback
 {
 public:
@@ -98,6 +59,7 @@ public:
 	//! Retrieves amount of audio data queued for playback, in seconds.
 	virtual double get_latency() = 0;
 	//! Sends new samples to the device. Allowed to be called only when update() indicates that the device is ready.
+	//! update() should be called AGAIN after each process_samples() to know if the device is ready for more.
 	virtual void process_samples(const audio_chunk & p_chunk) = 0;
 	//! Updates playback; queries whether the device is ready to receive new data.
 	//! @param p_ready On success, receives value indicating whether the device is ready for next process_samples() call.
@@ -117,8 +79,11 @@ public:
     bool is_progressing_();
     //! Helper, see output_v4::update_v2()
     size_t update_v2_();
-    //! Helper, see output_v4::get_event_trigger()
+    //! Helper, see output_v4::get_trigger_event()
     pfc::eventHandle_t get_trigger_event_();
+
+    //! Helper for output_entry implementation.
+    static uint32_t g_extra_flags() { return 0; }
 
 };
 
@@ -155,10 +120,10 @@ class NOVTABLE output_v4 : public output_v3 {
 public:
 	//! Returns an event handle that becomes signaled once the output wants an update() call and possibly process_samples(). \n
 	//! Optional; may return pfc::eventInvalid if not available at this time or not supported. \n
-    //! If implemented, calling update() should clear the event each time.
+	//! Use the event only if update() signals that it cannot take any more data at this time. \n
 	virtual pfc::eventHandle_t get_trigger_event() {return pfc::eventInvalid;}
 	//! Returns whether the audio stream is currently being played or not. \n
-	//! Typically, for a short period of time, initially send data is not played until a sufficient amount is queued to initiate playback without glitches. \n
+	//! Typically, for a short period of time, initially sent data is not played until a sufficient amount is queued to initiate playback without glitches. \n
     //! For old outputs that do not implement this, the value can be assumed to be true.
     virtual bool is_progressing() {return true;}
     
@@ -168,6 +133,12 @@ public:
     virtual size_t update_v2();
 };
 
+//! \since 1.6
+class output_v5 : public output_v4 {
+	FB2K_MAKE_SERVICE_INTERFACE(output_v5, output_v4);
+public:
+	virtual unsigned get_forced_channel_mask() { return 0; }
+};
 
 class NOVTABLE output_entry : public service_base {
 	FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(output_entry);
@@ -181,8 +152,10 @@ public:
 	//! For internal use by backend. Retrieves human-readable name of this output_entry implementation.
 	virtual const char * get_name() = 0;
 
+#ifdef _WIN32
 	//! Obsolete, do not use.
-	virtual void advanced_settings_popup(HWND p_parent,POINT p_menupoint) = 0;
+	virtual void advanced_settings_popup(HWND p_parent,POINT p_menupoint) {}
+#endif
 
 	enum {
 		flag_needs_bitdepth_config = 1 << 0,
@@ -198,6 +171,8 @@ public:
 		flag_high_latency = 1 << 5,
 		//! Low latency operation (local playback), mutually exclusive with flag_high_latency
 		flag_low_latency = 1 << 6,
+        //! When set, the output will be used in special compatibility mode: guaranteed regular update() calls, injected padding (silence) at the end of stream.
+        flag_needs_shims = 1 << 7,
 	};
 
 	virtual t_uint32 get_config_flags() = 0;
@@ -225,9 +200,8 @@ public:
 	void enum_devices(output_device_enum_callback & p_callback) {T::g_enum_devices(p_callback);}
 	GUID get_guid() {return T::g_get_guid();}
 	const char * get_name() {return T::g_get_name();}
-	void advanced_settings_popup(HWND p_parent,POINT p_menupoint) {T::g_advanced_settings_popup(p_parent,p_menupoint);}
-	
-	t_uint32 get_config_flags() {
+
+    t_uint32 get_config_flags() {
 		t_uint32 flags = 0;
 		if (T::g_advanced_settings_query()) flags |= output_entry::flag_needs_advanced_config;
 		if (T::g_needs_bitdepth_config()) flags |= output_entry::flag_needs_bitdepth_config;
@@ -236,6 +210,7 @@ public:
 		if (T::g_supports_multiple_streams()) flags |= output_entry::flag_supports_multiple_streams;
 		if (T::g_is_high_latency()) flags |= output_entry::flag_high_latency;
 		else flags |= output_entry::flag_low_latency;
+        flags |= T::g_extra_flags();
 		return flags;
 	}
 };
@@ -245,7 +220,7 @@ public:
 template<class T>
 class output_factory_t : public service_factory_single_t<output_entry_impl_t<T> > {};
 
-class output_impl : public output_v4 {
+class output_impl : public output_v5 {
 protected:
 	output_impl() : m_incoming_ptr(0) {}
 	virtual void on_update() = 0;
@@ -255,13 +230,13 @@ protected:
 	virtual t_size get_latency_samples() = 0;
 	virtual void on_flush() = 0;
 	virtual void on_flush_changing_track() {on_flush();}
-	virtual void open(t_samplespec const & p_spec) = 0;
+	virtual void open(audio_chunk::spec_t const & p_spec) = 0;
 	
 	virtual void pause(bool p_state) = 0;
 	virtual void force_play() = 0;
 	virtual void volume_set(double p_val) = 0;
 protected:
-	void on_need_reopen() {m_active_spec = t_samplespec();}
+	void on_need_reopen() {m_active_spec.clear(); }
 private:
 	void flush();
 	void flush_changing_track();
@@ -272,7 +247,7 @@ private:
 
 	pfc::array_t<audio_sample,pfc::alloc_fast_aggressive> m_incoming;
 	t_size m_incoming_ptr;
-	t_samplespec m_incoming_spec,m_active_spec;
+	audio_chunk::spec_t m_incoming_spec,m_active_spec;
 };
 
 
@@ -350,7 +325,7 @@ struct outputCoreConfig_t {
 	double m_buffer_length;
 	uint32_t m_flags;
 	uint32_t m_bitDepth;
-	enum { flagUseDither = 1 << 0 };
+	enum { flagUseDither = 1 << 0, flagUseFades = 1 << 1 };
 };
 #pragma pack(pop)
 
@@ -365,7 +340,8 @@ public:
 	virtual output::ptr instantiateCoreDefault(double overrideBufferLength = 0) = 0;
 	virtual void getCoreConfig( void * out, size_t outSize ) = 0;
 
-	void getCoreConfig(outputCoreConfig_t & out ) { getCoreConfig(&out, sizeof(out) ); }
+	void getCoreConfig(outputCoreConfig_t& out);
+	outputCoreConfig_t getCoreConfig();
 };
 
 //! \since 1.3.16

@@ -8,15 +8,13 @@
 #include "CWindowCreateAndDelete.h"
 #include "win32_utility.h"
 #include "listview_helper.h" // ListView_GetColumnCount
+#include "clipboard.h"
+
+#include "DarkMode.h"
 
 #include <forward_list>
 
-#ifndef WM_MOUSEHWHEEL
-#define WM_MOUSEHWHEEL 0x20E
-#endif
-
 using namespace InPlaceEdit;
-
 
 namespace {
 
@@ -36,19 +34,19 @@ namespace {
 		parent.PostMessage(MSG_COMPLETION, code, 0);
 	}
 
+#if 0
 	static void GAbortEditing(t_uint32 code) {
 		for (auto walk = g_editboxes.begin(); walk != g_editboxes.end(); ++walk) {
 			GAbortEditing(*walk, code);
 		}
 	}
-
+#endif
 	static bool IsSamePopup(CWindow wnd1, CWindow wnd2) {
 		return pfc::findOwningPopup(wnd1) == pfc::findOwningPopup(wnd2);
 	}
 
 	static void MouseEventTest(HWND target, CPoint pt, bool isWheel) {
-		for (auto walk = g_editboxes.begin(); walk != g_editboxes.end(); ++walk) {
-			CWindow edit(*walk);
+		for (CWindow edit : g_editboxes) {
 			bool cancel = false;
 			if (target != edit && IsSamePopup(target, edit)) {
 				cancel = true;
@@ -108,9 +106,9 @@ namespace {
 		}
 	}
 
-	class CInPlaceEditBox : public CContainedWindowSimpleT<CEdit> {
+	class CInPlaceEditBox : public CWindowImpl<CInPlaceEditBox, CEdit> {
 	public:
-		CInPlaceEditBox() : m_selfDestruct(), m_suppressChar() {}
+		CInPlaceEditBox(uint32_t flags) : m_flags(flags) {}
 		BEGIN_MSG_MAP_EX(CInPlaceEditBox)
 			//MSG_WM_CREATE(OnCreate)
 			MSG_WM_DESTROY(OnDestroy)
@@ -118,6 +116,7 @@ namespace {
 			MSG_WM_KILLFOCUS(OnKillFocus)
 			MSG_WM_CHAR(OnChar)
 			MSG_WM_KEYDOWN(OnKeyDown)
+			MSG_WM_PASTE(OnPaste)
 		END_MSG_MAP()
 
 		void OnCreation() {
@@ -129,7 +128,7 @@ namespace {
 			on_editbox_destruction(m_hWnd);
 			SetMsgHandled(FALSE);
 		}
-		int OnCreate(LPCREATESTRUCT lpCreateStruct) {
+		int OnCreate(LPCREATESTRUCT) {
 			OnCreation();
 			SetMsgHandled(FALSE);
 			return 0;
@@ -160,14 +159,61 @@ namespace {
 			SetMsgHandled(FALSE);
 		}
 
+		bool testPaste(const char* str) {
+			if (m_flags & InPlaceEdit::KFlagNumberSigned) {
+				if (pfc::string_is_numeric(str)) return true;
+				if (str[0] == '-' && pfc::string_is_numeric(str + 1) && GetWindowTextLength() == 0) return true;
+				return false;
+			}
+			if (m_flags & InPlaceEdit::KFlagNumber) {
+				return pfc::string_is_numeric(str);
+			}
+			return true;
+		}
+
+		void OnPaste() {
+			if (m_flags & (InPlaceEdit::KFlagNumber | InPlaceEdit::KFlagNumberSigned)) {
+				pfc::string8 temp;
+				ClipboardHelper::OpenScope scope; scope.Open(m_hWnd);
+				if (ClipboardHelper::GetString(temp)) {
+					if (!testPaste(temp)) return;
+				}
+			}
+			// Let edit box handle it
+			SetMsgHandled(FALSE);
+		}
+		bool testChar(UINT nChar) {
+			// Allow various non text characters
+			if (nChar < ' ') return true;
+
+			if (m_flags & InPlaceEdit::KFlagNumberSigned) {
+				if (pfc::char_is_numeric(nChar)) return true;
+				if (nChar == '-') {
+					return GetWindowTextLength() == 0;
+				}
+				return false;
+			}
+			if (m_flags & InPlaceEdit::KFlagNumber) {
+				return pfc::char_is_numeric(nChar);
+			}
+			return true;
+		}
 		void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags) {
+			(void)nRepCnt; (void)nRepCnt;
 			if (m_suppressChar != 0) {
 				UINT code = nFlags & 0xFF;
 				if (code == m_suppressChar) return;
 			}
+
+			if (!testChar(nChar)) {
+				MessageBeep(0);
+				return;
+			}
+
 			SetMsgHandled(FALSE);
 		}
 		void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags) {
+			(void)nRepCnt;
 			m_suppressChar = nFlags & 0xFF;
 			switch (nChar) {
 			case VK_BACK:
@@ -207,8 +253,9 @@ namespace {
 			}
 		}
 
-		bool m_selfDestruct;
-		UINT m_suppressChar;
+		const uint32_t m_flags;
+		bool m_selfDestruct = false;
+		UINT m_suppressChar = 0;
 	};
 
 	class InPlaceEditContainer : public CWindowImpl<InPlaceEditContainer> {
@@ -244,11 +291,17 @@ namespace {
 				else if (m_flags & KFlagAlignRight) style |= ES_RIGHT;
 				else style |= ES_LEFT;
 
+				// ES_NUMBER is buggy in many ways (repaint glitches after balloon popup) and does not allow signed numbers.
+				// We implement number handling by filtering WM_CHAR instead.
+				// if (m_flags & KFlagNumber) style |= ES_NUMBER;
+
 
 				CEdit edit;
 
 				WIN32_OP(edit.Create(*this, rcClient, NULL, style, 0, ID_MYEDIT) != NULL);
 				edit.SetFont(parent.GetFont());
+
+				if ((m_flags & KFlagDark) != 0) DarkMode::DarkenEditLite(edit);
 
 				if (m_ACData.is_valid()) InitializeSimpleAC(edit, m_ACData.get_ptr(), m_ACOpts);
 				m_edit.SubclassWindow(edit);
@@ -272,7 +325,9 @@ namespace {
 		}
 
 		InPlaceEditContainer(const RECT & p_rect, t_uint32 p_flags, pfc::rcptr_t<pfc::string_base> p_content, reply_t p_notify, IUnknown * ACData, DWORD ACOpts)
-			: m_content(p_content), m_notify(p_notify), m_completed(false), m_initialized(false), m_changed(false), m_disable_editing(false), m_initRect(p_rect), m_flags(p_flags), m_selfDestruct(), m_ACData(ACData), m_ACOpts(ACOpts)
+			: m_content(p_content), m_notify(p_notify), m_initRect(p_rect), 
+			m_flags(p_flags), m_ACData(ACData), m_ACOpts(ACOpts),
+			m_edit(p_flags)
 		{
 		}
 
@@ -287,7 +342,7 @@ namespace {
 			MESSAGE_HANDLER_EX(MSG_COMPLETION, OnMsgCompletion)
 			COMMAND_HANDLER_EX(ID_MYEDIT, EN_CHANGE, OnEditChange)
 			MSG_WM_DESTROY(OnDestroy)
-			END_MSG_MAP()
+		END_MSG_MAP()
 
 		HWND GetEditBox() const { return m_edit; }
 
@@ -306,7 +361,7 @@ namespace {
 			GetParent().UpdateWindow();
 			m_disable_editing = true;
 		}
-		LRESULT OnMsgCompletion(UINT, WPARAM wParam, LPARAM lParam) {
+		LRESULT OnMsgCompletion(UINT, WPARAM wParam, LPARAM) {
 			PFC_ASSERT(m_initialized);
 			if ((wParam & KEditMaskReason) != KEditLostFocus) {
 				GetParent().SetFocus();
@@ -342,10 +397,10 @@ namespace {
 
 		const pfc::rcptr_t<pfc::string_base> m_content;
 		const reply_t m_notify;
-		bool m_completed;
-		bool m_initialized, m_changed;
-		bool m_disable_editing;
-		bool m_selfDestruct;
+		bool m_completed = false;
+		bool m_initialized = false, m_changed = false;
+		bool m_disable_editing = false;
+		bool m_selfDestruct = false;
 		const CRect m_initRect;
 		const t_uint32 m_flags;
 		CInPlaceEditBox m_edit;

@@ -120,7 +120,7 @@ public:
 	void open(const char * inPath, file::ptr inReader, abort_callback & aborter);
 	void close();
 
-	winLocalFileScope() : m_isTemp() {}
+	winLocalFileScope() {}
 	winLocalFileScope(const char * inPath, file::ptr inReader, abort_callback & aborter) : m_isTemp() {
 		open(inPath, inReader, aborter);
 	}
@@ -130,8 +130,9 @@ public:
 	}
 
 	const wchar_t * Path() const { return m_path.c_str(); }
+	bool isTemp() const { return m_isTemp; }
 private:
-	bool m_isTemp;
+	bool m_isTemp = false;
 	std::wstring m_path;
 };
 
@@ -147,7 +148,7 @@ public:
 	void Acquire( abort_callback& aborter );
 	void Release();
 private:
-	CMutex(const CMutex&); void operator=(const CMutex&);
+	CMutex(const CMutex&) = delete; void operator=(const CMutex&) = delete;
 	HANDLE m_hMutex;
 };
 
@@ -158,10 +159,15 @@ public:
 	CMutexScope(CMutex & mutex, abort_callback & aborter);
 	~CMutexScope();
 private:
-	CMutexScope(const CMutexScope &); void operator=(const CMutexScope&);
+	CMutexScope(const CMutexScope &) = delete; void operator=(const CMutexScope&) = delete;
 	CMutex & m_mutex;
 };
 
 bool IsWindowsS();
+
+#else
+
+class OleInitializeScope {};
+class CoInitializeScope {};
 
 #endif // _WIN32

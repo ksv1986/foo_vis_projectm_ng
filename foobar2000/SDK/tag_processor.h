@@ -37,6 +37,7 @@ public:
 	static t_size g_multiskip(const service_ptr_t<file> & p_file,t_filesize & p_size_skipped,abort_callback & p_abort);
 	static void g_remove(const service_ptr_t<file> & p_file,t_filesize & p_size_removed,abort_callback & p_abort);
 	static void g_remove_ex(tag_write_callback & p_callback,const service_ptr_t<file> & p_file,t_filesize & p_size_removed,abort_callback & p_abort);
+	static uint32_t g_tagsize(const void* pHeader10bytes);
 
 	FB2K_MAKE_SERVICE_COREAPI(tag_processor_id3v2);
 };
@@ -88,7 +89,8 @@ namespace tag_processor {
 	void remove_id3v2_trailing(const service_ptr_t<file> & p_file,abort_callback & p_abort);
 	//! Reads trailing tags from the file.
 	void read_trailing(const service_ptr_t<file> & p_file,file_info & p_info,abort_callback & p_abort);
-	//! Reads trailing tags from the file. Extended version, returns offset at which parsed tags start.
+	//! Reads trailing tags from the file. Extended version, returns offset at which parsed tags start. \n
+	//! p_tagoffset set to offset of found tags, to EOF if no tags were found.
 	void read_trailing_ex(const service_ptr_t<file> & p_file,file_info & p_info,t_filesize & p_tagoffset,abort_callback & p_abort);
 	//! Reads ID3v2 tags from specified file.
 	void read_id3v2(const service_ptr_t<file> & p_file,file_info & p_info,abort_callback & p_abort);
@@ -96,6 +98,7 @@ namespace tag_processor {
 	void read_id3v2_trailing(const service_ptr_t<file> & p_file,file_info & p_info,abort_callback & p_abort);
 
 	void skip_id3v2(const service_ptr_t<file> & p_file,t_filesize & p_size_skipped,abort_callback & p_abort);
+    t_filesize skip_id3v2(file::ptr const & f, abort_callback & a);
 
 	bool is_id3v1_sufficient(const file_info & p_info);
 	void truncate_to_id3v1(file_info & p_info);

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cue_creator.h"
+#include <SDK/chapterizer.h>
+#include <SDK/input_impl.h>
 
 //HINT: for info on how to generate an embedded cuesheet enabled input, see the end of this header.
 
@@ -49,6 +51,8 @@ namespace file_info_record_helper {
 		template<typename t_callback> void enumerate_meta(t_callback & p_callback) const {m_meta.enumerate(p_callback);}
 		template<typename t_callback> void enumerate_meta(t_callback & p_callback) {m_meta.enumerate(p_callback);}
 
+		size_t meta_value_count(const char* name) const;
+
 	//private:
 		t_meta_map m_meta;
 		t_info_map m_info;
@@ -92,7 +96,9 @@ namespace cue_parser
 
 	class embeddedcue_metadata_manager {
 	public:
+		// Named get_tag() for backwards compat - it doesn't just get tag, it builds the intended tag from current metadata
 		void get_tag(file_info & p_info) const;
+		// Imports tag read from file
 		void set_tag(file_info const & p_info);
 
 		void get_track_info(unsigned p_track,file_info & p_info) const;
@@ -101,6 +107,7 @@ namespace cue_parser
 		bool have_cuesheet() const;
 		unsigned remap_trackno(unsigned p_index) const;
 		t_size get_cue_track_count() const;
+		pfc::string8 build_minimal_cuesheet() const;
 	private:
 		track_record_list m_content;
 	};
@@ -114,29 +121,35 @@ namespace cue_parser
 	public:
 		typedef input_info_writer_v2 interface_info_writer_t; // remove_tags supplied
 		void open(service_ptr_t<file> p_filehint,const char * p_path,t_input_open_reason p_reason,abort_callback & p_abort) {
+			m_remote = filesystem::g_is_recognized_and_remote( p_path );
+			if (m_remote && p_reason == input_open_info_write) throw exception_io_object_is_remote();
 			m_impl.open( p_filehint, p_path, p_reason, p_abort );
-			file_info_impl info;
-			m_impl.get_info(info,p_abort);
-			m_meta.set_tag(info);
+			if (!m_remote) {
+				file_info_impl info;
+				m_impl.get_info(info, p_abort);
+				m_meta.set_tag(info);
+			}
 		}
 
 		t_uint32 get_subsong_count() {
-			return m_meta.have_cuesheet() ? (uint32_t) m_meta.get_cue_track_count() : 1;
+			return this->expose_cuesheet() ? (uint32_t) m_meta.get_cue_track_count() : 1;
 		}
 
 		t_uint32 get_subsong(t_uint32 p_index) {
-			return m_meta.have_cuesheet() ? m_meta.remap_trackno(p_index) : 0;
+			return this->expose_cuesheet() ? m_meta.remap_trackno(p_index) : 0;
 		}
 
 		void get_info(t_uint32 p_subsong,file_info & p_info,abort_callback & p_abort) {
-			if (p_subsong == 0) {
-				m_meta.get_tag(p_info);
+			if (m_remote) {
+				PFC_ASSERT(p_subsong == 0);
+				m_impl.get_info(p_info, p_abort);
 			} else {
 				m_meta.get_track_info(p_subsong,p_info);
 			}
 		}
 
-		t_filestats get_file_stats(abort_callback & p_abort) {return m_impl.get_file_stats(p_abort);}
+		t_filestats get_file_stats(abort_callback& p_abort) { return get_stats2(stats2_legacy, p_abort).to_legacy(); }
+		t_filestats2 get_stats2(uint32_t f, abort_callback& a) { return m_impl.get_stats2(f, a); }
 
 		void decode_initialize(t_uint32 p_subsong,unsigned p_flags,abort_callback & p_abort) {
 			if (p_subsong == 0) {
@@ -144,7 +157,7 @@ namespace cue_parser
 				m_decodeFrom = 0; m_decodeLength = -1; m_decodePos = 0;
 			} else {
 				double start, length;
-				m_meta.query_track_offsets(p_subsong,start,length);
+				_query_track_offsets(p_subsong,start,length);
 				unsigned flags2 = p_flags;
 				if (start > 0) flags2 &= ~input_flag_no_seeking;
 				flags2 &= ~input_flag_allow_inaccurate_seeking;
@@ -193,27 +206,69 @@ namespace cue_parser
 		}
 
 		void remove_tags(abort_callback & abort) {
+			PFC_ASSERT(!m_remote);
+
+			pfc::string8 restoreCuesheet;
+			if (this->expose_cuesheet()) {
+				restoreCuesheet = m_meta.build_minimal_cuesheet();
+			}
+			
 			m_impl.remove_tags( abort );
+
+			if (restoreCuesheet.length() > 0) {
+				// restore minimal tag
+				file_info_impl infoMinimal; infoMinimal.meta_set("cuesheet", restoreCuesheet);
+				m_impl.retag(infoMinimal, abort);
+			}
+			
 			file_info_impl info;
 			m_impl.get_info(info, abort);
 			m_meta.set_tag( info );
 		}
 
 		void retag_set_info(t_uint32 p_subsong,const file_info & p_info,abort_callback & p_abort) {
+			PFC_ASSERT(!m_remote);
 			if (p_subsong == 0) {
-				m_meta.set_tag(p_info);
+				// Special case: Only subsong zero altered
+				m_retag0 = p_info; m_retag0_pending = true;
 			} else {
+				if (m_retag0_pending) {
+					m_meta.set_tag(m_retag0); m_retag0.reset();
+					m_retag0_pending = false;
+				}
 				m_meta.set_track_info(p_subsong,p_info);
 			}
+			m_retag_pending = true;
 		}
-
+		void _retag(const file_info& info, abort_callback& abort) {
+			m_impl.retag(info, abort);
+		}
 		void retag_commit(abort_callback & p_abort) {
+			PFC_ASSERT(!m_remote);
+			if (!m_retag_pending) return;
+
+			if (m_retag0_pending) {
+				// Special case: Only subsong zero altered
+				_retag(m_retag0, p_abort); m_retag0.reset();
+				m_retag0_pending = false;
+			} else {
+				file_info_impl info;
+				m_meta.get_tag(info);
+				_retag(info, p_abort);
+			}
+
 			file_info_impl info;
-			m_meta.get_tag(info);
-			m_impl.retag(pfc::implicit_cast<const file_info&>(info), p_abort);
-			info.reset();
 			m_impl.get_info(info, p_abort);
 			m_meta.set_tag( info );
+
+			m_retag_pending = false;
+			
+		}
+		void _query_track_offsets(unsigned p_subsong, double& start, double& length) const {
+			m_meta.query_track_offsets(p_subsong,start,length);
+		}
+		bool expose_cuesheet() const {
+			return !m_remote && m_meta.have_cuesheet();
 		}
 	private:
 		bool _run(audio_chunk & chunk, mem_block_container * raw, abort_callback & aborter) {
@@ -249,8 +304,12 @@ namespace cue_parser
 		}
 		t_base m_impl;
 		double m_decodeFrom, m_decodeLength, m_decodePos;
-
+		bool m_remote = false;
 		embeddedcue_metadata_manager m_meta;
+
+		file_info_impl m_retag0;
+		bool m_retag0_pending = false;
+		bool m_retag_pending = false;
 	};
 #ifdef FOOBAR2000_HAVE_CHAPTERIZER
 	template<typename I>
@@ -308,6 +367,13 @@ namespace cue_parser
 			input_wrapper_cue_t<I> instance;
 			instance.open(0,p_path,input_open_info_read,p_abort);
 			const t_uint32 total = instance.get_subsong_count();
+
+			if (instance.expose_cuesheet()) {
+				double start, len;
+				instance._query_track_offsets(1, start, len);
+				p_list.set_pregap( start );
+			}
+
 
 			p_list.set_chapter_count(total);
 			for(t_uint32 walk = 0; walk < total; ++walk) {

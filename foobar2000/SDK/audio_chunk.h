@@ -1,5 +1,8 @@
 #pragma once
 
+#include <pfc/audio_sample.h>
+#include "exception_io.h"
+
 #ifdef _WIN32
 #include <MMReg.h>
 #endif
@@ -9,6 +12,7 @@ PFC_DECLARE_EXCEPTION(exception_unexpected_audio_format_change, exception_io_dat
 //! Interface to container of a chunk of audio data. See audio_chunk_impl for an implementation.
 class NOVTABLE audio_chunk {
 public:
+	struct spec_t; // forward decl
 
 	enum {
 		sample_rate_min = 1000, sample_rate_max = 20000000
@@ -37,16 +41,22 @@ public:
 		channel_top_back_center		= 1<<16,
 		channel_top_back_right		= 1<<17,
 
-		channel_config_mono = channel_front_center,
-		channel_config_stereo = channel_front_left | channel_front_right,
-		channel_config_4point0 = channel_front_left | channel_front_right | channel_back_left | channel_back_right,
-		channel_config_5point0 = channel_front_left | channel_front_right | channel_front_center | channel_back_left | channel_back_right,
-		channel_config_5point1 = channel_front_left | channel_front_right | channel_front_center | channel_lfe | channel_back_left | channel_back_right,
-		channel_config_5point1_side = channel_front_left | channel_front_right | channel_front_center | channel_lfe | channel_side_left | channel_side_right,
-		channel_config_7point1 = channel_config_5point1 | channel_side_left | channel_side_right,
-
 		channels_back_left_right = channel_back_left | channel_back_right,
 		channels_side_left_right = channel_side_left | channel_side_right,
+
+		channel_config_mono = channel_front_center,
+		channel_config_stereo = channel_front_left | channel_front_right,
+		channel_config_2point1 = channel_config_stereo | channel_lfe,
+		channel_config_3point0 = channel_config_stereo | channel_front_center,
+		channel_config_4point0 = channel_config_stereo | channels_back_left_right,
+		channel_config_4point0_side = channel_config_stereo | channels_side_left_right,
+		channel_config_4point1 = channel_config_4point0 | channel_lfe,
+		channel_config_5point0 = channel_config_4point0 | channel_front_center,
+		channel_config_6point0 = channel_config_4point0 | channels_side_left_right,
+		channel_config_5point1 = channel_config_4point0 | channel_front_center | channel_lfe,
+		channel_config_5point1_side = channel_config_4point0_side | channel_front_center | channel_lfe,
+		channel_config_7point1 = channel_config_5point1 | channels_side_left_right,
+
 
 		defined_channel_count = 18,
 	};
@@ -57,14 +67,14 @@ public:
 	static unsigned g_guess_channel_config_xiph(unsigned count);
 
 	//! Helper function; translates audio_chunk channel map to WAVEFORMATEXTENSIBLE channel map.
-	static uint32_t g_channel_config_to_wfx(unsigned p_config);
+	static constexpr uint32_t g_channel_config_to_wfx(unsigned p_config) { return p_config;}
 	//! Helper function; translates WAVEFORMATEXTENSIBLE channel map to audio_chunk channel map.
-	static unsigned g_channel_config_from_wfx(uint32_t p_wfx);
+	static constexpr unsigned g_channel_config_from_wfx(uint32_t p_wfx) { return p_wfx;}
 
 	//! Extracts flag describing Nth channel from specified map. Usable to figure what specific channel in a stream means.
 	static unsigned g_extract_channel_flag(unsigned p_config,unsigned p_index);
 	//! Counts channels specified by channel map.
-	static unsigned g_count_channels(unsigned p_config);
+	static constexpr unsigned g_count_channels(unsigned p_config) { return pfc::countBits32(p_config); }
 	//! Calculates index of a channel specified by p_flag in a stream where channel map is described by p_config.
 	static unsigned g_channel_index_from_flag(unsigned p_config,unsigned p_flag);
 
@@ -73,6 +83,7 @@ public:
 	static unsigned g_find_channel_idx(unsigned p_flag);
 	static void g_formatChannelMaskDesc(unsigned flags, pfc::string_base & out);
 	static pfc::string8 g_formatChannelMaskDesc(unsigned flags);
+	static const char* g_channelMaskName(unsigned flags);
 
 	
 
@@ -139,6 +150,7 @@ public:
 	bool is_valid() const;
 
 	void debugChunkSpec() const;
+	pfc::string8 formatChunkSpec() const;
 #if PFC_DEBUG
 	void assert_valid(const char * ctx) const;
 #else
@@ -153,23 +165,19 @@ public:
 	size_t get_used_size() const {return get_sample_count() * get_channels();}
 	//! Same as get_used_size(); old confusingly named version.
 	size_t get_data_length() const {return get_sample_count() * get_channels();}
-#ifdef _MSC_VER
-#pragma deprecated( get_data_length )
-#endif
 
 	//! Resets all audio_chunk data.
 	inline void reset() {
 		set_sample_count(0);
 		set_srate(0);
-		set_channels(0);
+		set_channels(0,0);
 		set_data_size(0);
 	}
 	
 	//! Helper, sets chunk data to contents of specified buffer, with specified number of channels / sample rate / channel map.
-	void set_data(const audio_sample * src,t_size samples,unsigned nch,unsigned srate,unsigned channel_config);
-	
-	//! Helper, sets chunk data to contents of specified buffer, with specified number of channels / sample rate, using default channel map for specified channel count.
-	inline void set_data(const audio_sample * src,t_size samples,unsigned nch,unsigned srate) {set_data(src,samples,nch,srate,g_guess_channel_config(nch));}
+	void set_data(const audio_sample * src,size_t samples,unsigned nch,unsigned srate,unsigned channel_config);
+	void set_data(const audio_sample* src, size_t samples, spec_t const& spec);
+	void set_data(const audio_sample* src, t_size samples, unsigned nch, unsigned srate);
 
 	void set_data_int16(const int16_t * src,t_size samples,unsigned nch,unsigned srate,unsigned channel_config);
 	
@@ -197,8 +205,10 @@ public:
 	void set_data_fixedpoint_ms(const void * ptr, size_t bytes, unsigned sampleRate, unsigned channels, unsigned bps, unsigned channelConfig);
 
 	void set_data_floatingpoint_ex(const void * ptr,t_size bytes,unsigned p_sample_rate,unsigned p_channels,unsigned p_bits_per_sample,unsigned p_flags,unsigned p_channel_config);//signed/unsigned flags dont apply
+	static bool is_supported_floatingpoint(unsigned bps) { return bps == 32 || bps == 64; }
 
-	inline void set_data_32(const float * src,t_size samples,unsigned nch,unsigned srate) {return set_data(src,samples,nch,srate);}
+	void set_data_32(const float* src, t_size samples, unsigned nch, unsigned srate);
+	void set_data_32(const float* src, t_size samples, spec_t const & spec );
 
 	//! Appends silent samples at the end of the chunk. \n
 	//! The chunk may be empty prior to this call, its sample rate & channel count will be set to the specified values then. \n
@@ -239,15 +249,15 @@ public:
 
 	//! Simple function to get original PCM stream back. Assumes host's endianness, integers are signed - including the 8bit mode; 32bit mode assumed to be float.
 	//! @returns false when the conversion could not be performed because of unsupported bit depth etc.
-	bool to_raw_data(class mem_block_container & out, t_uint32 bps, bool useUpperBits = true, float scale = 1.0) const;
+	bool to_raw_data(class mem_block_container & out, t_uint32 bps, bool useUpperBits = true, audio_sample scale = 1.0) const;
 
 	//! Convert audio_chunk contents to fixed-point PCM format.
 	//! @param useUpperBits relevant if bps != bpsValid, signals whether upper or lower bits of each sample should be used.
-	bool toFixedPoint(class mem_block_container & out, uint32_t bps, uint32_t bpsValid, bool useUpperBits = true, float scale = 1.0) const;
+	bool toFixedPoint(class mem_block_container & out, uint32_t bps, uint32_t bpsValid, bool useUpperBits = true, audio_sample scale = 1.0) const;
 
 	//! Convert a buffer of audio_samples to fixed-point PCM format.
 	//! @param useUpperBits relevant if bps != bpsValid, signals whether upper or lower bits of each sample should be used.
-	static bool g_toFixedPoint(const audio_sample * in, void * out, size_t count, uint32_t bps, uint32_t bpsValid, bool useUpperBits = true, float scale = 1.0);
+	static bool g_toFixedPoint(const audio_sample * in, void * out, size_t count, uint32_t bps, uint32_t bpsValid, bool useUpperBits = true, audio_sample scale = 1.0);
 
 
 	//! Helper, calculates peak value of data in the chunk. The optional parameter specifies initial peak value, to simplify calling code.
@@ -268,8 +278,8 @@ public:
 	}
 
 	struct spec_t {
-		uint32_t sampleRate;
-		uint32_t chanCount, chanMask;
+		uint32_t sampleRate = 0;
+		uint32_t chanCount = 0, chanMask = 0;
 		
 		static bool equals( const spec_t & v1, const spec_t & v2 );
 		bool operator==(const spec_t & other) const { return equals(*this, other);}
@@ -288,7 +298,7 @@ public:
 		WAVEFORMATEXTENSIBLE toWFXEXWithBPS(uint32_t bps) const;
 #endif
 
-		pfc::string8 toString() const;
+		pfc::string8 toString( const char * delim = " " ) const;
 	};
 	static spec_t makeSpec(uint32_t rate, uint32_t channels);
 	static spec_t makeSpec(uint32_t rate, uint32_t channels, uint32_t chanMask);
@@ -296,6 +306,8 @@ public:
 
 	spec_t get_spec() const;
 	void set_spec(const spec_t &);
+
+	void append(const audio_chunk& other);
 protected:
 	audio_chunk() {}
 	~audio_chunk() {}	

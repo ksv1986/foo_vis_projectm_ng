@@ -1,4 +1,5 @@
 #pragma once
+#include "filesystem.h" // FB2K_STREAM_READER_OVERLOAD, FB2K_STREAM_WRITER_OVERLOAD
 
 struct hasher_md5_state {
 	char m_data[128];
@@ -10,9 +11,17 @@ struct hasher_md5_result {
 	t_uint64 xorHalve() const;
 	GUID asGUID() const;
 	pfc::string8 asString() const;
-
+    GUID toGUID() const;
+    
 	static hasher_md5_result null() {hasher_md5_result h = {}; return h;}
 };
+
+FB2K_STREAM_READER_OVERLOAD(hasher_md5_result) {
+	stream.read_raw(&value, sizeof(value)); return stream;
+}
+FB2K_STREAM_WRITER_OVERLOAD(hasher_md5_result) {
+	stream.write_raw(&value, sizeof(value)); return stream;
+}
 
 inline bool operator==(const hasher_md5_result & p_item1,const hasher_md5_result & p_item2) {return memcmp(&p_item1,&p_item2,sizeof(hasher_md5_result)) == 0;}
 inline bool operator!=(const hasher_md5_result & p_item1,const hasher_md5_result & p_item2) {return memcmp(&p_item1,&p_item2,sizeof(hasher_md5_result)) != 0;}
@@ -46,6 +55,7 @@ public:
 	
 	//! Helper
 	void process_string(hasher_md5_state & p_state,const char * p_string,t_size p_length = ~0) {return process(p_state,p_string,pfc::strlen_max(p_string,p_length));}
+	hasher_md5_state initialize() { hasher_md5_state ret; initialize(ret); return ret; }
 
 	FB2K_MAKE_SERVICE_COREAPI(hasher_md5);
 };
