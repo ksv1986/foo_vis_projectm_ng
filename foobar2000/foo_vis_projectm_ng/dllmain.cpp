@@ -100,7 +100,18 @@ namespace {
 	}
 
 	void CProjectMWindow::on_chunk(const audio_chunk& chunk) {
+#if audio_sample_size == 32
 		m_p->pcm()->addPCMfloat_2ch(chunk.get_data(), chunk.get_used_size());
+#elif audio_sample_size == 64
+		const double* p = chunk.get_data();
+		const auto end = chunk.get_used_size() - 1;
+		for (size_t i = 0; i < end; i += 2) {
+			const float ch2[2] = { float(p[i]), float(p[i + 1]) };
+			m_p->pcm()->addPCMfloat_2ch(ch2, 2);
+		}
+#else
+#error Unsupported audio_sample_size
+#endif
 	}
 
 #define _S(x) #x
