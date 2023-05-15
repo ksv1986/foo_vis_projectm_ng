@@ -72,25 +72,40 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\projectM\vcpkg_installed\$(VcpkgTriplet)\include;..\projectM\$(Platform)\$(Configuration)\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\projectM\vcpkg_installed\$(VcpkgTriplet)\include;..\projectM\$(Platform)\$(Configuration)\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\projectM\vcpkg_installed\$(VcpkgTriplet)\include;..\projectM\$(Platform)\$(Configuration)\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..;..\..;..\..\projectM\src;..\..\projectM\msvc;$(IncludePath)</IncludePath>
+    <IncludePath>..;..\..;..\projectM\vcpkg_installed\$(VcpkgTriplet)\include;..\projectM\$(Platform)\$(Configuration)\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;PROJECTM_STATIC_DEFINE;_DEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>
@@ -100,15 +115,15 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;libprojectM.lib;libprojectM_playlist.lib;glew32.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\projectM\vcpkg_installed\$(VcpkgTriplet)\lib;..\projectM\$(Platform)\$(Configuration)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;PROJECTM_STATIC_DEFINE;_DEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>
@@ -119,8 +134,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\projectM\msvc\libprojectM\$(Configuration);..\..\projectM\msvc\Renderer\$(Configuration);..\..\projectM\msvc\NativePresetFactory\$(Configuration);..\..\projectM\msvc\MilkdropPresetFactory\$(Configuration);$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;libprojectM.lib;libprojectM_playlist.lib;glew32.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\projectM\vcpkg_installed\$(VcpkgTriplet)\lib;..\projectM\$(Platform)\$(Configuration)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -129,7 +144,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;PROJECTM_STATIC_DEFINE;NDEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>
@@ -141,8 +156,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;libprojectM.lib;libprojectM_playlist.lib;glew32.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\projectM\vcpkg_installed\$(VcpkgTriplet)\lib;..\projectM\$(Platform)\$(Configuration)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -151,7 +166,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;PROJECTM_STATIC_DEFINE;NDEBUG;FOOVISPROJECTMNG_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>
@@ -164,8 +179,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;projectM.lib;MilkdropPresetFactory.lib;NativePresetFactory.lib;Renderer.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\projectM\msvc\libprojectM\$(Configuration);..\..\projectM\msvc\Renderer\$(Configuration);..\..\projectM\msvc\NativePresetFactory\$(Configuration);..\..\projectM\msvc\MilkdropPresetFactory\$(Configuration);$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;libprojectM.lib;libprojectM_playlist.lib;glew32.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\projectM\vcpkg_installed\$(VcpkgTriplet)\lib;..\projectM\$(Platform)\$(Configuration)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>powershell "$(ProjectDir)compress.ps1" "$(TargetPath)"</Command>
@@ -187,18 +202,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\projectM\msvc\MilkdropPresetFactory.vcxproj">
-      <Project>{ef3369c9-e934-3f1e-996b-21518b57a809}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\projectM\msvc\NativePresetFactory.vcxproj">
-      <Project>{e2d4cee6-b8cb-32ac-8977-52a48c8da4e1}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\projectM\msvc\projectM.vcxproj">
-      <Project>{dabc69a6-66c3-392c-8a62-ec989b0850a4}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\projectM\msvc\Renderer.vcxproj">
-      <Project>{07427fa1-1771-3a2d-9183-167a8345deeb}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\..\libPPUI\libPPUI.vcxproj">
       <Project>{7729eb82-4069-4414-964b-ad399091a03f}</Project>
     </ProjectReference>
@@ -214,6 +217,9 @@
     <ProjectReference Include="..\SDK\foobar2000_SDK.vcxproj">
       <Project>{e8091321-d79d-4575-86ef-064ea1a4a20d}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vcpkg.json" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

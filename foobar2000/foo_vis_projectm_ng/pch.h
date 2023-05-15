@@ -11,7 +11,9 @@
 #include <helpers/BumpableElem.h>
 #include <libPPUI/win32_op.h>
 
-#include <libprojectM/projectM.hpp>
-#include <glew.h>
+#include <projectM-4/projectM.h>
+#include <projectM-4/playlist.h>
+
+#include <GL/gl.h>
 
 #endif //PCH_H
